@@ -35,7 +35,6 @@ final class ScreenCaptureEngine: NSObject {
             let ownPID = ProcessInfo.processInfo.processIdentifier
             let windows = content.windows
                 .filter { window in
-                    // Exclude our own app and windows without titles
                     window.owningApplication?.processID != ownPID &&
                     window.frame.width > 100 &&
                     window.frame.height > 100
@@ -53,6 +52,35 @@ final class ScreenCaptureEngine: NSObject {
                 }
 
             DispatchQueue.main.async { completion(windows) }
+        }
+    }
+
+    /// Get the frontmost window (the one the user was last interacting with)
+    static func getFrontmostWindow(pid: pid_t = 0, completion: @escaping (SCWindow?) -> Void) {
+        let frontPID: pid_t
+        if pid != 0 {
+            frontPID = pid
+        } else {
+            frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
+        }
+
+        SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: true) { content, error in
+            guard let content else {
+                DispatchQueue.main.async { completion(nil) }
+                return
+            }
+
+            let ownPID = ProcessInfo.processInfo.processIdentifier
+
+            // Find the main window of the frontmost app
+            let frontWindow = content.windows.first { window in
+                window.owningApplication?.processID == frontPID &&
+                window.owningApplication?.processID != ownPID &&
+                window.frame.width > 100 &&
+                window.frame.height > 100
+            }
+
+            DispatchQueue.main.async { completion(frontWindow) }
         }
     }
 

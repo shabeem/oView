@@ -8,6 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var currentWidth: CGFloat = 200
     private var currentHeight: CGFloat = 200
     private var currentShape: OverlayShape = .circle
+    private var currentOpacity: CGFloat = 1.0
+    private var frontPID: pid_t = 0
 
     // MARK: - App Lifecycle
 
@@ -32,45 +34,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.delegate = self
 
-        let captureItem = NSMenuItem(title: "Захватить окно…", action: #selector(refreshAndShowWindows), keyEquivalent: "r")
+        let captureItem = NSMenuItem(title: "Захватить текущее окно", action: #selector(captureCurrentWindow), keyEquivalent: "r")
         captureItem.target = self
         menu.addItem(captureItem)
+
+        // Also keep option to pick manually
+        let pickItem = NSMenuItem(title: "Выбрать окно…", action: #selector(refreshAndShowWindows), keyEquivalent: "")
+        pickItem.target = self
+        menu.addItem(pickItem)
 
         menu.addItem(NSMenuItem.separator())
 
         // Shape submenu
         let shapeItem = NSMenuItem(title: "Форма", action: nil, keyEquivalent: "")
         let shapeMenu = NSMenu()
-
         let circleItem = NSMenuItem(title: "⚪ Круг", action: #selector(setCircleShape), keyEquivalent: "")
         circleItem.target = self
         circleItem.state = currentShape == .circle ? .on : .off
         shapeMenu.addItem(circleItem)
-
         let rectItem = NSMenuItem(title: "▭ Прямоугольник", action: #selector(setRectShape), keyEquivalent: "")
         rectItem.target = self
         rectItem.state = currentShape == .rectangle ? .on : .off
         shapeMenu.addItem(rectItem)
-
         shapeItem.submenu = shapeMenu
         menu.addItem(shapeItem)
 
         // Size submenu
         let sizeItem = NSMenuItem(title: "Размер", action: nil, keyEquivalent: "")
         let sizeMenu = NSMenu()
-
         if currentShape == .circle {
             for size in [120, 160, 200, 250, 300, 400] {
                 let item = NSMenuItem(title: "\(size) px", action: #selector(changeSize(_:)), keyEquivalent: "")
                 item.tag = size
                 item.target = self
-                if CGFloat(size) == currentWidth {
-                    item.state = .on
-                }
+                if CGFloat(size) == currentWidth { item.state = .on }
                 sizeMenu.addItem(item)
             }
         } else {
-            // Width submenu
             let widthItem = NSMenuItem(title: "Ширина", action: nil, keyEquivalent: "")
             let widthMenu = NSMenu()
             for w in [160, 200, 280, 360, 480, 600] {
@@ -83,7 +83,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             widthItem.submenu = widthMenu
             sizeMenu.addItem(widthItem)
 
-            // Height submenu
             let heightItem = NSMenuItem(title: "Высота", action: nil, keyEquivalent: "")
             let heightMenu = NSMenu()
             for h in [120, 160, 200, 250, 300, 400] {
@@ -96,9 +95,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             heightItem.submenu = heightMenu
             sizeMenu.addItem(heightItem)
         }
-
         sizeItem.submenu = sizeMenu
         menu.addItem(sizeItem)
+
+        // Opacity submenu
+        let opacityItem = NSMenuItem(title: "Прозрачность", action: nil, keyEquivalent: "")
+        let opacityMenu = NSMenu()
+        for pct in [100, 80, 60, 40, 20] {
+            let item = NSMenuItem(title: "\(pct)%", action: #selector(changeOpacity(_:)), keyEquivalent: "")
+            item.tag = pct
+            item.target = self
+            if Int(currentOpacity * 100) == pct { item.state = .on }
+            opacityMenu.addItem(item)
+        }
+        opacityItem.submenu = opacityMenu
+        menu.addItem(opacityItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -117,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func setCircleShape() {
         currentShape = .circle
-        currentHeight = currentWidth // Make square for circle
+        currentHeight = currentWidth
         overlayWindow?.contentViewInstance.shape = .circle
         overlayWindow?.resize(toWidth: currentWidth, height: currentHeight)
         rebuildMenu()
@@ -130,7 +141,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rebuildMenu()
     }
 
-    // MARK: - Window Picker
+    // MARK: - Auto Capture Current Window
+
+    @objc private func captureCurrentWindow() {
+        checkScreenRecordingPermission { [weak self] granted in
+            guard let self else { return }
+            if granted {
+                self.autoCaptureFrontWindow()
+            } else {
+                self.showPermissionAlert()
+            }
+        }
+    }
+
+    private func autoCaptureFrontWindow() {
+        ScreenCaptureEngine.getFrontmostWindow(pid: frontPID) { [weak self] window in
+            guard let self else { return }
+            if let window {
+                self.beginCapture(of: window)
+            } else {
+                let alert = NSAlert()
+                alert.messageText = "Не удалось найти активное окно"
+                alert.informativeText = "Переключитесь на нужное окно перед захватом."
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: "OK")
+                alert.runModal()
+            }
+        }
+    }
+
+    // MARK: - Manual Window Picker (backup)
 
     @objc private func refreshAndShowWindows() {
         checkScreenRecordingPermission { [weak self] granted in
@@ -146,7 +186,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showWindowPicker() {
         ScreenCaptureEngine.getAvailableWindows { [weak self] windows in
             guard let self else { return }
-
             let picker = NSMenu(title: "Выберите окно")
 
             if windows.isEmpty {
@@ -162,7 +201,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         appGroups.append((w.appName, windows.filter { $0.appName == w.appName }))
                     }
                 }
-
                 for (appName, appWindows) in appGroups {
                     let headerItem = NSMenuItem(title: appName, action: nil, keyEquivalent: "")
                     headerItem.isEnabled = false
@@ -171,7 +209,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         attributes: [.font: NSFont.boldSystemFont(ofSize: 13), .foregroundColor: NSColor.labelColor]
                     )
                     picker.addItem(headerItem)
-
                     for window in appWindows {
                         let item = NSMenuItem(title: "    \(window.title)", action: #selector(self.selectWindow(_:)), keyEquivalent: "")
                         item.target = self
@@ -201,6 +238,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let overlay = OOverlayWindow(width: currentWidth, height: currentHeight)
         overlay.contentViewInstance.viewDelegate = self
         overlay.contentViewInstance.shape = currentShape
+        overlay.alphaValue = currentOpacity
         overlayWindow = overlay
 
         if let screen = NSScreen.main {
@@ -218,7 +256,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         captureEngine = engine
     }
 
-    // MARK: - Size
+    // MARK: - Size & Opacity
 
     @objc private func changeSize(_ sender: NSMenuItem) {
         let newSize = CGFloat(sender.tag)
@@ -246,6 +284,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         overlayWindow?.resize(toWidth: currentWidth, height: currentHeight)
     }
 
+    @objc private func changeOpacity(_ sender: NSMenuItem) {
+        currentOpacity = CGFloat(sender.tag) / 100.0
+        overlayWindow?.alphaValue = currentOpacity
+        if let menu = sender.menu {
+            for item in menu.items { item.state = item.tag == sender.tag ? .on : .off }
+        }
+        rebuildMenu()
+    }
+
     @objc private func stopCapture() {
         captureEngine?.stopCapture()
         captureEngine = nil
@@ -271,7 +318,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showPermissionAlert() {
         let alert = NSAlert()
         alert.messageText = "Требуется разрешение на запись экрана"
-        alert.informativeText = "OView необходим доступ к записи экрана для захвата окна видеозвонка.\n\nОткройте:\nНастройки системы → Конфиденциальность и безопасность → Запись экрана\n\nИ включите OView в списке."
+        alert.informativeText = "OView необходим доступ к записи экрана.\n\nОткройте:\nНастройки системы → Конфиденциальность и безопасность → Запись экрана\n\nИ включите OView в списке."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Открыть настройки")
         alert.addButton(withTitle: "Отмена")
@@ -289,12 +336,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func showContextMenu(at point: NSPoint) {
         let menu = NSMenu()
 
-        // Shape toggle
         let shapeLabel = currentShape == .circle ? "Переключить на ▭" : "Переключить на ⚪"
         let shapeAction = currentShape == .circle ? #selector(setRectShape) : #selector(setCircleShape)
         let shapeToggle = NSMenuItem(title: shapeLabel, action: shapeAction, keyEquivalent: "")
         shapeToggle.target = self
         menu.addItem(shapeToggle)
+
+        // Opacity in context menu
+        let opacityItem = NSMenuItem(title: "Прозрачность", action: nil, keyEquivalent: "")
+        let opacityMenu = NSMenu()
+        for pct in [100, 80, 60, 40, 20] {
+            let item = NSMenuItem(title: "\(pct)%", action: #selector(changeOpacity(_:)), keyEquivalent: "")
+            item.tag = pct
+            item.target = self
+            if Int(currentOpacity * 100) == pct { item.state = .on }
+            opacityMenu.addItem(item)
+        }
+        opacityItem.submenu = opacityMenu
+        menu.addItem(opacityItem)
 
         let resetItem = NSMenuItem(title: "Сбросить масштаб", action: #selector(resetVideoTransform), keyEquivalent: "")
         resetItem.target = self
@@ -323,7 +382,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 // MARK: - NSMenuDelegate
 
-extension AppDelegate: NSMenuDelegate {}
+extension AppDelegate: NSMenuDelegate {
+    func menuWillOpen(_ menu: NSMenu) {
+        // Remember the frontmost app before our menu steals focus
+        if let frontApp = NSWorkspace.shared.menuBarOwningApplication ?? NSWorkspace.shared.frontmostApplication {
+            frontPID = frontApp.processIdentifier
+        }
+    }
+}
 
 // MARK: - ScreenCaptureDelegate
 
