@@ -34,25 +34,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.delegate = self
 
-        let captureItem = NSMenuItem(title: "Захватить текущее окно", action: #selector(captureCurrentWindow), keyEquivalent: "r")
+        let captureItem = NSMenuItem(title: "Capture Current Window", action: #selector(captureCurrentWindow), keyEquivalent: "r")
         captureItem.target = self
         menu.addItem(captureItem)
 
         // Also keep option to pick manually
-        let pickItem = NSMenuItem(title: "Выбрать окно…", action: #selector(refreshAndShowWindows), keyEquivalent: "")
+        let pickItem = NSMenuItem(title: "Pick Window…", action: #selector(refreshAndShowWindows), keyEquivalent: "")
         pickItem.target = self
         menu.addItem(pickItem)
 
         menu.addItem(NSMenuItem.separator())
 
         // Shape submenu
-        let shapeItem = NSMenuItem(title: "Форма", action: nil, keyEquivalent: "")
+        let shapeItem = NSMenuItem(title: "Shape", action: nil, keyEquivalent: "")
         let shapeMenu = NSMenu()
-        let circleItem = NSMenuItem(title: "⚪ Круг", action: #selector(setCircleShape), keyEquivalent: "")
+        let circleItem = NSMenuItem(title: "⚪ Circle", action: #selector(setCircleShape), keyEquivalent: "")
         circleItem.target = self
         circleItem.state = currentShape == .circle ? .on : .off
         shapeMenu.addItem(circleItem)
-        let rectItem = NSMenuItem(title: "▭ Прямоугольник", action: #selector(setRectShape), keyEquivalent: "")
+        let rectItem = NSMenuItem(title: "▭ Rectangle", action: #selector(setRectShape), keyEquivalent: "")
         rectItem.target = self
         rectItem.state = currentShape == .rectangle ? .on : .off
         shapeMenu.addItem(rectItem)
@@ -60,7 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(shapeItem)
 
         // Size submenu
-        let sizeItem = NSMenuItem(title: "Размер", action: nil, keyEquivalent: "")
+        let sizeItem = NSMenuItem(title: "Size", action: nil, keyEquivalent: "")
         let sizeMenu = NSMenu()
         if currentShape == .circle {
             for size in [120, 160, 200, 250, 300, 400] {
@@ -71,7 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 sizeMenu.addItem(item)
             }
         } else {
-            let widthItem = NSMenuItem(title: "Ширина", action: nil, keyEquivalent: "")
+            let widthItem = NSMenuItem(title: "Width", action: nil, keyEquivalent: "")
             let widthMenu = NSMenu()
             for w in [160, 200, 280, 360, 480, 600] {
                 let item = NSMenuItem(title: "\(w) px", action: #selector(changeWidth(_:)), keyEquivalent: "")
@@ -83,7 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             widthItem.submenu = widthMenu
             sizeMenu.addItem(widthItem)
 
-            let heightItem = NSMenuItem(title: "Высота", action: nil, keyEquivalent: "")
+            let heightItem = NSMenuItem(title: "Height", action: nil, keyEquivalent: "")
             let heightMenu = NSMenu()
             for h in [120, 160, 200, 250, 300, 400] {
                 let item = NSMenuItem(title: "\(h) px", action: #selector(changeHeight(_:)), keyEquivalent: "")
@@ -99,7 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(sizeItem)
 
         // Opacity submenu
-        let opacityItem = NSMenuItem(title: "Прозрачность", action: nil, keyEquivalent: "")
+        let opacityItem = NSMenuItem(title: "Opacity", action: nil, keyEquivalent: "")
         let opacityMenu = NSMenu()
         for pct in [100, 80, 60, 40, 20] {
             let item = NSMenuItem(title: "\(pct)%", action: #selector(changeOpacity(_:)), keyEquivalent: "")
@@ -113,11 +113,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        let stopItem = NSMenuItem(title: "Остановить захват", action: #selector(stopCapture), keyEquivalent: "s")
+        let stopItem = NSMenuItem(title: "Stop Capture", action: #selector(stopCapture), keyEquivalent: "s")
         stopItem.target = self
         menu.addItem(stopItem)
 
-        let quitItem = NSMenuItem(title: "Выйти", action: #selector(quitApp), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
@@ -161,8 +161,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.beginCapture(of: window)
             } else {
                 let alert = NSAlert()
-                alert.messageText = "Не удалось найти активное окно"
-                alert.informativeText = "Переключитесь на нужное окно перед захватом."
+                alert.messageText = "Could not find active window"
+                alert.informativeText = "Switch to the desired window before capturing."
                 alert.alertStyle = .warning
                 alert.addButton(withTitle: "OK")
                 alert.runModal()
@@ -186,10 +186,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showWindowPicker() {
         ScreenCaptureEngine.getAvailableWindows { [weak self] windows in
             guard let self else { return }
-            let picker = NSMenu(title: "Выберите окно")
+            let picker = NSMenu(title: "Select Window")
 
             if windows.isEmpty {
-                let emptyItem = NSMenuItem(title: "Нет доступных окон", action: nil, keyEquivalent: "")
+                let emptyItem = NSMenuItem(title: "No windows available", action: nil, keyEquivalent: "")
                 emptyItem.isEnabled = false
                 picker.addItem(emptyItem)
             } else {
@@ -317,11 +317,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showPermissionAlert() {
         let alert = NSAlert()
-        alert.messageText = "Требуется разрешение на запись экрана"
-        alert.informativeText = "OView необходим доступ к записи экрана.\n\nОткройте:\nНастройки системы → Конфиденциальность и безопасность → Запись экрана\n\nИ включите OView в списке."
+        alert.messageText = "Screen Recording Permission Required"
+        alert.informativeText = "OView needs Screen Recording access.\n\nGo to:\nSystem Settings → Privacy & Security → Screen Recording\n\nAnd enable OView."
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Открыть настройки")
-        alert.addButton(withTitle: "Отмена")
+        alert.addButton(withTitle: "Open Settings")
+        alert.addButton(withTitle: "Cancel")
 
         let response = alert.runModal()
         if response == .alertFirstButtonReturn {
@@ -336,14 +336,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func showContextMenu(at point: NSPoint) {
         let menu = NSMenu()
 
-        let shapeLabel = currentShape == .circle ? "Переключить на ▭" : "Переключить на ⚪"
+        let shapeLabel = currentShape == .circle ? "Switch to ▭" : "Switch to ⚪"
         let shapeAction = currentShape == .circle ? #selector(setRectShape) : #selector(setCircleShape)
         let shapeToggle = NSMenuItem(title: shapeLabel, action: shapeAction, keyEquivalent: "")
         shapeToggle.target = self
         menu.addItem(shapeToggle)
 
         // Opacity in context menu
-        let opacityItem = NSMenuItem(title: "Прозрачность", action: nil, keyEquivalent: "")
+        let opacityItem = NSMenuItem(title: "Opacity", action: nil, keyEquivalent: "")
         let opacityMenu = NSMenu()
         for pct in [100, 80, 60, 40, 20] {
             let item = NSMenuItem(title: "\(pct)%", action: #selector(changeOpacity(_:)), keyEquivalent: "")
@@ -355,13 +355,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         opacityItem.submenu = opacityMenu
         menu.addItem(opacityItem)
 
-        let resetItem = NSMenuItem(title: "Сбросить масштаб", action: #selector(resetVideoTransform), keyEquivalent: "")
+        let resetItem = NSMenuItem(title: "Reset Zoom", action: #selector(resetVideoTransform), keyEquivalent: "")
         resetItem.target = self
         menu.addItem(resetItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        let stopItem = NSMenuItem(title: "Остановить захват", action: #selector(stopCapture), keyEquivalent: "")
+        let stopItem = NSMenuItem(title: "Stop Capture", action: #selector(stopCapture), keyEquivalent: "")
         stopItem.target = self
         menu.addItem(stopItem)
 
@@ -401,7 +401,7 @@ extension AppDelegate: ScreenCaptureDelegate {
     func screenCaptureEngine(_ engine: ScreenCaptureEngine, didFailWithError error: Error) {
         DispatchQueue.main.async { [weak self] in
             let alert = NSAlert()
-            alert.messageText = "Ошибка захвата"
+            alert.messageText = "Capture Error"
             alert.informativeText = error.localizedDescription
             alert.alertStyle = .critical
             alert.addButton(withTitle: "OK")

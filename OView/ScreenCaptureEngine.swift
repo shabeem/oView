@@ -147,8 +147,8 @@ final class ScreenCaptureEngine: NSObject {
 
         var errorDescription: String? {
             switch self {
-            case .noWindowFound: return "Не удалось найти окно для захвата."
-            case .permissionDenied: return "Требуется разрешение на запись экрана."
+            case .noWindowFound: return "Could not find a window to capture."
+            case .permissionDenied: return "Screen recording permission is required."
             }
         }
     }

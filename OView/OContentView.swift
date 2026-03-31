@@ -129,7 +129,7 @@ final class OContentView: NSView {
         context.setFillColor(NSColor(white: 0.12, alpha: 1.0).cgColor)
         context.fill(rect)
 
-        let text = "Нажмите в меню\n«Захватить окно»" as NSString
+        let text = "Click menu icon\nto capture a window" as NSString
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
         let attrs: [NSAttributedString.Key: Any] = [
