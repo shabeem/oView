@@ -64,11 +64,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Menu Bar
 
     private func setupStatusItem() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "circle.circle.fill", accessibilityDescription: "OView")
-            button.image?.isTemplate = true
+            if let img = NSImage(systemSymbolName: "circle.circle.fill", accessibilityDescription: "OView") {
+                img.isTemplate = true
+                button.image = img
+                button.imagePosition = .imageOnly
+            } else {
+                // Fallback: plain text if SF Symbol unavailable
+                button.title = "◉"
+            }
         }
 
         rebuildMenu()
@@ -188,14 +194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Auto Capture Current Window
 
     @objc private func captureCurrentWindow() {
-        checkScreenRecordingPermission { [weak self] granted in
-            guard let self else { return }
-            if granted {
-                self.autoCaptureFrontWindow()
-            } else {
-                self.showPermissionAlert()
-            }
-        }
+        autoCaptureFrontWindow()
     }
 
     private func autoCaptureFrontWindow() {
@@ -204,12 +203,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let window {
                 self.beginCapture(of: window)
             } else {
-                let alert = NSAlert()
-                alert.messageText = "Could not find active window"
-                alert.informativeText = "Switch to the desired window before capturing."
-                alert.alertStyle = .warning
-                alert.addButton(withTitle: "OK")
-                alert.runModal()
+                // Fallback: show window picker if auto-detect fails
+                self.showWindowPicker()
             }
         }
     }
@@ -217,14 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Manual Window Picker (backup)
 
     @objc private func refreshAndShowWindows() {
-        checkScreenRecordingPermission { [weak self] granted in
-            guard let self else { return }
-            if granted {
-                self.showWindowPicker()
-            } else {
-                self.showPermissionAlert()
-            }
-        }
+        showWindowPicker()
     }
 
     private func showWindowPicker() {
@@ -352,17 +340,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Permissions
 
     private func checkScreenRecordingPermission(completion: @escaping (Bool) -> Void) {
-        SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { content, error in
-            DispatchQueue.main.async {
-                completion(error == nil && content != nil)
-            }
+        if CGPreflightScreenCaptureAccess() {
+            completion(true)
+        } else {
+            // Request access — this will prompt the user or return false if denied
+            let granted = CGRequestScreenCaptureAccess()
+            completion(granted)
         }
     }
 
     private func showPermissionAlert() {
         let alert = NSAlert()
         alert.messageText = "Screen Recording Permission Required"
-        alert.informativeText = "OView needs Screen Recording access.\n\nGo to:\nSystem Settings → Privacy & Security → Screen Recording\n\nAnd enable OView."
+        alert.informativeText = "OView needs Screen Recording access.\n\nGo to:\nSystem Settings → Privacy & Security → Screen Recording\n\nAnd enable OView.\n\nAfter enabling, you may need to quit and reopen OView."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Open Settings")
         alert.addButton(withTitle: "Cancel")
