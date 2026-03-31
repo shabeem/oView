@@ -1,5 +1,19 @@
 import AppKit
 import ScreenCaptureKit
+import Carbon.HIToolbox
+
+// Global C function for Carbon hotkey callback
+private func hotkeyHandler(_ nextHandler: EventHandlerCallRef?, _ event: EventRef?, _ userData: UnsafeMutableRawPointer?) -> OSStatus {
+    guard let event else { return OSStatus(eventNotHandledErr) }
+    var hotKeyID = EventHotKeyID()
+    GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &hotKeyID)
+    if hotKeyID.id == 1 {
+        DispatchQueue.main.async {
+            (NSApp.delegate as? AppDelegate)?.hotkeyCapture()
+        }
+    }
+    return noErr
+}
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
@@ -15,6 +29,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
+        registerGlobalHotkey()
+    }
+
+    // MARK: - Global Hotkey (Ctrl+Shift+O) via Carbon — no Accessibility needed
+
+    private var hotkeyRef: EventHotKeyRef?
+
+    private func registerGlobalHotkey() {
+        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+
+        InstallEventHandler(GetApplicationEventTarget(), hotkeyHandler, 1, &eventType, nil, nil)
+
+        // Ctrl+Shift+O
+        var hotKeyID = EventHotKeyID(signature: OSType(0x4F565700), id: 1)
+        let modifiers: UInt32 = UInt32(controlKey | shiftKey)
+        let keyCode: UInt32 = 0x1F // kVK_ANSI_O
+
+        RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotkeyRef)
+    }
+
+    func hotkeyCapture() {
+        // Get frontmost app at the moment of hotkey press
+        if let frontApp = NSWorkspace.shared.frontmostApplication {
+            frontPID = frontApp.processIdentifier
+        }
+        if captureEngine?.isCapturing == true {
+            stopCapture()
+        } else {
+            autoCaptureFrontWindow()
+        }
     }
 
     // MARK: - Menu Bar
