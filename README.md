@@ -47,10 +47,24 @@ Perfect for keeping an eye on your video call while working in other apps.
 
 Download the latest `.zip` from [Releases](https://github.com/shabeem/oView/releases).
 
+**First time setup:**
+1. Unzip the download
+2. **Double-click `install.command`** — it will remove macOS quarantine, copy to Applications, and launch OView
+3. Grant Screen Recording permission when prompted, then quit and reopen OView
+
+**Or manually via Terminal:**
+```bash
+xattr -cr OView.app
+tccutil reset ScreenCapture com.oview.app
+open OView.app
+```
+
+> **Note:** macOS blocks unsigned apps by default. The install script handles this automatically.
+
 ## Usage
 
-1. Launch OView → a circle icon (⊙) appears in the menu bar
-2. Click the icon → **"Захватить окно…"**
+1. Launch OView → a circle icon appears in the menu bar
+2. Click the icon → **"Capture Current Window"**
 3. Select the window you want to capture (e.g., Telegram)
 4. A floating overlay appears with live video from that window
 5. Continue working — the overlay stays on top
