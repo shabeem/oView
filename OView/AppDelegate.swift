@@ -15,10 +15,26 @@ private func hotkeyHandler(_ nextHandler: EventHandlerCallRef?, _ event: EventRe
     return noErr
 }
 
+/// One active capture session (engine + overlay window)
+final class CaptureSession {
+    let engine: ScreenCaptureEngine
+    let overlay: OOverlayWindow
+    var id: UUID = UUID()
+
+    init(engine: ScreenCaptureEngine, overlay: OOverlayWindow) {
+        self.engine = engine
+        self.overlay = overlay
+    }
+
+    func stop() {
+        engine.stopCapture()
+        overlay.orderOut(nil)
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
-    private var overlayWindow: OOverlayWindow?
-    private var captureEngine: ScreenCaptureEngine?
+    private var sessions: [CaptureSession] = []
     private var currentWidth: CGFloat = 200
     private var currentHeight: CGFloat = 200
     private var currentShape: OverlayShape = .circle
@@ -54,11 +70,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let frontApp = NSWorkspace.shared.frontmostApplication {
             frontPID = frontApp.processIdentifier
         }
-        if captureEngine?.isCapturing == true {
-            stopCapture()
-        } else {
-            autoCaptureFrontWindow()
-        }
+        // Always add a new capture (Ctrl+Shift+O)
+        autoCaptureFrontWindow()
     }
 
     // MARK: - Menu Bar
@@ -163,8 +176,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        let stopItem = NSMenuItem(title: "Stop Capture", action: #selector(stopCapture), keyEquivalent: "s")
+        if !sessions.isEmpty {
+            let activeItem = NSMenuItem(title: "Active: \(sessions.count) capture(s)", action: nil, keyEquivalent: "")
+            activeItem.isEnabled = false
+            menu.addItem(activeItem)
+        }
+
+        let stopItem = NSMenuItem(title: "Stop All Captures", action: #selector(stopCapture), keyEquivalent: "s")
         stopItem.target = self
+        stopItem.isEnabled = !sessions.isEmpty
         menu.addItem(stopItem)
 
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q")
@@ -179,15 +199,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func setCircleShape() {
         currentShape = .circle
         currentHeight = currentWidth
-        overlayWindow?.contentViewInstance.shape = .circle
-        overlayWindow?.resize(toWidth: currentWidth, height: currentHeight)
+        // Apply to all overlays
+        for session in sessions {
+            session.overlay.contentViewInstance.shape = .circle
+            session.overlay.resize(toWidth: currentWidth, height: currentHeight)
+        }
         rebuildMenu()
     }
 
     @objc private func setRectShape() {
         currentShape = .rectangle
-        overlayWindow?.contentViewInstance.shape = .rectangle
-        overlayWindow?.contentViewInstance.needsDisplay = true
+        for session in sessions {
+            session.overlay.contentViewInstance.shape = .rectangle
+            session.overlay.contentViewInstance.needsDisplay = true
+        }
         rebuildMenu()
     }
 
@@ -265,27 +290,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Capture
 
     private func beginCapture(of window: SCWindow) {
-        captureEngine?.stopCapture()
-
         let overlay = OOverlayWindow(width: currentWidth, height: currentHeight)
         overlay.contentViewInstance.viewDelegate = self
         overlay.contentViewInstance.shape = currentShape
         overlay.alphaValue = currentOpacity
-        overlayWindow = overlay
 
+        // Position: stack new overlays offset from existing ones
         if let screen = NSScreen.main {
             let screenFrame = screen.visibleFrame
-            let x = screenFrame.maxX - currentWidth - 30
-            let y = screenFrame.minY + 30
+            let offset = CGFloat(sessions.count) * 30
+            let x = screenFrame.maxX - currentWidth - 30 - offset
+            let y = screenFrame.minY + 30 + offset
             overlay.setFrameOrigin(NSPoint(x: x, y: y))
         }
 
         overlay.makeKeyAndOrderFront(nil)
 
         let engine = ScreenCaptureEngine()
+        let session = CaptureSession(engine: engine, overlay: overlay)
+        overlay.sessionID = session.id
+        engine.sessionID = session.id
         engine.delegate = self
         engine.startCapture(of: window)
-        captureEngine = engine
+        sessions.append(session)
     }
 
     // MARK: - Size & Opacity
@@ -297,7 +324,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let sizeMenu = sender.menu {
             for item in sizeMenu.items { item.state = item.tag == sender.tag ? .on : .off }
         }
-        overlayWindow?.resize(toWidth: newSize, height: newSize)
+        for session in sessions {
+            session.overlay.resize(toWidth: newSize, height: newSize)
+        }
     }
 
     @objc private func changeWidth(_ sender: NSMenuItem) {
@@ -305,7 +334,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let menu = sender.menu {
             for item in menu.items { item.state = item.tag == sender.tag ? .on : .off }
         }
-        overlayWindow?.resize(toWidth: currentWidth, height: currentHeight)
+        for session in sessions {
+            session.overlay.resize(toWidth: currentWidth, height: currentHeight)
+        }
     }
 
     @objc private func changeHeight(_ sender: NSMenuItem) {
@@ -313,12 +344,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let menu = sender.menu {
             for item in menu.items { item.state = item.tag == sender.tag ? .on : .off }
         }
-        overlayWindow?.resize(toWidth: currentWidth, height: currentHeight)
+        for session in sessions {
+            session.overlay.resize(toWidth: currentWidth, height: currentHeight)
+        }
     }
 
     @objc private func changeOpacity(_ sender: NSMenuItem) {
         currentOpacity = CGFloat(sender.tag) / 100.0
-        overlayWindow?.alphaValue = currentOpacity
+        for session in sessions {
+            session.overlay.alphaValue = currentOpacity
+        }
         if let menu = sender.menu {
             for item in menu.items { item.state = item.tag == sender.tag ? .on : .off }
         }
@@ -326,10 +361,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func stopCapture() {
-        captureEngine?.stopCapture()
-        captureEngine = nil
-        overlayWindow?.orderOut(nil)
-        overlayWindow = nil
+        for session in sessions {
+            session.stop()
+        }
+        sessions.removeAll()
+    }
+
+    private func stopSession(_ session: CaptureSession) {
+        session.stop()
+        sessions.removeAll { $0.id == session.id }
     }
 
     @objc private func quitApp() {
@@ -367,7 +407,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Context Menu
 
-    func showContextMenu(at point: NSPoint) {
+    /// Which overlay the user right-clicked on
+    private var contextSession: CaptureSession?
+
+    func showContextMenu(at point: NSPoint, fromView view: OContentView? = nil) {
+        // Find which session this overlay belongs to
+        if let view {
+            contextSession = sessions.first { $0.overlay.contentViewInstance === view }
+        } else {
+            contextSession = sessions.last
+        }
+
         let menu = NSMenu()
 
         let shapeLabel = currentShape == .circle ? "Switch to ▭" : "Switch to ⚪"
@@ -395,11 +445,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        let stopItem = NSMenuItem(title: "Stop Capture", action: #selector(stopCapture), keyEquivalent: "")
-        stopItem.target = self
-        menu.addItem(stopItem)
+        let stopThisItem = NSMenuItem(title: "Stop This Capture", action: #selector(stopContextCapture), keyEquivalent: "")
+        stopThisItem.target = self
+        menu.addItem(stopThisItem)
 
-        if let window = overlayWindow, let view = window.contentView {
+        if sessions.count > 1 {
+            let stopAllItem = NSMenuItem(title: "Stop All Captures", action: #selector(stopCapture), keyEquivalent: "")
+            stopAllItem.target = self
+            menu.addItem(stopAllItem)
+        }
+
+        if let window = contextSession?.overlay ?? sessions.last?.overlay, let view = window.contentView {
             NSMenu.popUpContextMenu(menu, with: NSEvent.mouseEvent(
                 with: .rightMouseDown, location: point, modifierFlags: [],
                 timestamp: ProcessInfo.processInfo.systemUptime,
@@ -409,8 +465,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    @objc private func stopContextCapture() {
+        if let session = contextSession {
+            stopSession(session)
+        }
+        contextSession = nil
+    }
+
     @objc private func resetVideoTransform() {
-        overlayWindow?.contentViewInstance.resetTransforms()
+        if let session = contextSession {
+            session.overlay.contentViewInstance.resetTransforms()
+        } else {
+            sessions.last?.overlay.contentViewInstance.resetTransforms()
+        }
     }
 }
 
@@ -429,7 +496,10 @@ extension AppDelegate: NSMenuDelegate {
 
 extension AppDelegate: ScreenCaptureDelegate {
     func screenCaptureEngine(_ engine: ScreenCaptureEngine, didCaptureFrame frame: CGImage) {
-        overlayWindow?.contentViewInstance.updateFrame(frame)
+        // Route frame to the correct overlay by matching session ID
+        if let session = sessions.first(where: { $0.engine.sessionID == engine.sessionID }) {
+            session.overlay.contentViewInstance.updateFrame(frame)
+        }
     }
 
     func screenCaptureEngine(_ engine: ScreenCaptureEngine, didFailWithError error: Error) {
@@ -440,7 +510,9 @@ extension AppDelegate: ScreenCaptureDelegate {
             alert.alertStyle = .critical
             alert.addButton(withTitle: "OK")
             alert.runModal()
-            self?.stopCapture()
+            if let session = self?.sessions.first(where: { $0.engine.sessionID == engine.sessionID }) {
+                self?.stopSession(session)
+            }
         }
     }
 }
@@ -448,17 +520,27 @@ extension AppDelegate: ScreenCaptureDelegate {
 // MARK: - OContentViewDelegate
 
 extension AppDelegate: OContentViewDelegate {
-    func contentViewRequestsResize(delta: CGFloat) {
+    func contentViewRequestsResize(delta: CGFloat, from view: OContentView) {
         currentWidth = min(max(currentWidth + delta * 2, 80), 800)
         if currentShape == .circle {
             currentHeight = currentWidth
         } else {
             currentHeight = min(max(currentHeight + delta * 2, 80), 800)
         }
-        overlayWindow?.resize(toWidth: currentWidth, height: currentHeight)
+        if let session = sessions.first(where: { $0.overlay.contentViewInstance === view }) {
+            session.overlay.resize(toWidth: currentWidth, height: currentHeight)
+        }
     }
 
-    func contentViewRequestsContextMenu(at point: NSPoint) {
-        showContextMenu(at: point)
+    func contentViewRequestsResize(dx: CGFloat, dy: CGFloat, from view: OContentView) {
+        currentWidth = min(max(currentWidth + dx * 2, 80), 800)
+        currentHeight = min(max(currentHeight + dy * 2, 80), 800)
+        if let session = sessions.first(where: { $0.overlay.contentViewInstance === view }) {
+            session.overlay.resize(toWidth: currentWidth, height: currentHeight)
+        }
+    }
+
+    func contentViewRequestsContextMenu(at point: NSPoint, from view: OContentView) {
+        showContextMenu(at: point, fromView: view)
     }
 }

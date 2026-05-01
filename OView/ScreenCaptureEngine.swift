@@ -18,6 +18,7 @@ struct CaptureableWindow {
 
 final class ScreenCaptureEngine: NSObject {
     weak var delegate: ScreenCaptureDelegate?
+    var sessionID: UUID = UUID()
 
     private var stream: SCStream?
     private var streamOutput: CaptureStreamOutput?

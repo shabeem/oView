@@ -2,6 +2,7 @@ import AppKit
 
 final class OOverlayWindow: NSWindow {
     let contentViewInstance: OContentView
+    var sessionID: UUID = UUID()
 
     init(width: CGFloat, height: CGFloat) {
         let frame = NSRect(x: 100, y: 100, width: width, height: height)

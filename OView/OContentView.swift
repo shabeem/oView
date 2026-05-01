@@ -7,8 +7,9 @@ enum OverlayShape {
 }
 
 protocol OContentViewDelegate: AnyObject {
-    func contentViewRequestsResize(delta: CGFloat)
-    func contentViewRequestsContextMenu(at point: NSPoint)
+    func contentViewRequestsResize(delta: CGFloat, from view: OContentView)
+    func contentViewRequestsResize(dx: CGFloat, dy: CGFloat, from view: OContentView)
+    func contentViewRequestsContextMenu(at point: NSPoint, from view: OContentView)
 }
 
 final class OContentView: NSView {
@@ -201,7 +202,7 @@ final class OContentView: NSView {
         if event.modifierFlags.contains(.option) {
             // Option + scroll → resize the window
             let delta = event.scrollingDeltaY
-            viewDelegate?.contentViewRequestsResize(delta: delta)
+            viewDelegate?.contentViewRequestsResize(delta: delta, from: self)
         } else {
             // Scroll → zoom video in/out
             let delta = event.scrollingDeltaY * 0.02
@@ -216,12 +217,70 @@ final class OContentView: NSView {
     }
 
     override func rightMouseDown(with event: NSEvent) {
-        viewDelegate?.contentViewRequestsContextMenu(at: event.locationInWindow)
+        viewDelegate?.contentViewRequestsContextMenu(at: event.locationInWindow, from: self)
     }
 
-    // Cmd + drag → pan video inside; regular drag → move window
+    // MARK: - Edge Resize Detection
+
+    private let resizeEdgeThreshold: CGFloat = 20.0
+
+    private func isNearEdge(_ point: NSPoint) -> Bool {
+        let b = bounds
+        let t = resizeEdgeThreshold
+
+        switch shape {
+        case .circle:
+            let cx = b.width / 2
+            let cy = b.height / 2
+            let r = min(cx, cy)
+            let dx = point.x - cx
+            let dy = point.y - cy
+            let dist = sqrt(dx * dx + dy * dy)
+            // Near the circumference
+            return dist > (r - t) && dist <= r
+        case .rectangle:
+            return point.x < t || point.x > b.width - t ||
+                   point.y < t || point.y > b.height - t
+        }
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .arrow)
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        let local = convert(event.locationInWindow, from: nil)
+        if isNearEdge(local) {
+            NSCursor.resizeUpDown.set()
+        } else {
+            NSCursor.arrow.set()
+        }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas {
+            removeTrackingArea(area)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.activeAlways, .mouseMoved, .mouseEnteredAndExited],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        NSCursor.arrow.set()
+    }
+
+    // Cmd + drag → pan video; Option + drag → resize; regular drag → move window
     override func mouseDown(with event: NSEvent) {
         let isPanMode = event.modifierFlags.contains(.command)
+        let isResizeMode = event.modifierFlags.contains(.option)
+
         var lastScreenPoint = NSEvent.mouseLocation
         var keepTracking = true
 
@@ -238,6 +297,16 @@ final class OContentView: NSView {
                     videoOffset.x += dx
                     videoOffset.y += dy
                     needsDisplay = true
+                } else if isResizeMode {
+                    // Option + drag → resize
+                    if shape == .rectangle {
+                        // Rectangle: independent width/height
+                        viewDelegate?.contentViewRequestsResize(dx: dx, dy: -dy, from: self)
+                    } else {
+                        // Circle: uniform resize
+                        let delta = abs(dx) > abs(dy) ? dx : -dy
+                        viewDelegate?.contentViewRequestsResize(delta: delta, from: self)
+                    }
                 } else {
                     // Move the window itself
                     if let win = window {
